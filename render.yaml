@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: sunfi-default-risk-app
+    env: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    autoDeploy: true

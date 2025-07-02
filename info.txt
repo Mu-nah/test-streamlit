@@ -1,0 +1,86 @@
+# Customer Asset Financing Risk Prediction - Jupyter Notebook
+
+# 📦 Step 0: Import Required Libraries
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.model_selection import train_test_split, cross_val_score, StratifiedKFold
+from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score, roc_curve
+from sklearn.ensemble import RandomForestClassifier
+from xgboost import XGBClassifier
+from lightgbm import LGBMClassifier
+import shap
+import warnings
+warnings.filterwarnings("ignore")
+
+# 📥 Step 1: Load Data
+df = pd.read_csv("customer_financing_data.csv")
+df.head()
+
+# 📊 Step 2: EDA
+print(df.info())
+print(df.describe())
+print("\nMissing Values:\n", df.isnull().sum())
+print("\nClass Distribution:\n", df['default'].value_counts())
+sns.countplot(data=df, x='default')
+plt.title('Class Distribution')
+plt.show()
+
+corr_matrix = df.corr(numeric_only=True)
+plt.figure(figsize=(12, 8))
+sns.heatmap(corr_matrix, annot=True, cmap='coolwarm')
+plt.title('Correlation Matrix')
+plt.show()
+
+# 📐 Step 3: Feature Engineering
+# Fill missing values
+df.fillna(df.median(numeric_only=True), inplace=True)
+
+# Create Debt-to-Income Ratio if applicable
+if set(['debt', 'income']).issubset(df.columns):
+    df['debt_to_income'] = df['debt'] / (df['income'] + 1e-6)
+
+# Encode Categorical Variables
+cat_cols = df.select_dtypes(include=['object']).columns
+le = LabelEncoder()
+for col in cat_cols:
+    df[col] = le.fit_transform(df[col].astype(str))
+
+# Standardize features (optional)
+X = df.drop("default", axis=1)
+y = df["default"]
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
+
+# 📈 Step 4: Modeling
+models = {
+    "Random Forest": RandomForestClassifier(random_state=42),
+    "XGBoost": XGBClassifier(use_label_encoder=False, eval_metric='logloss', random_state=42),
+    "LightGBM": LGBMClassifier(random_state=42)
+}
+
+results = {}
+skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+
+for name, model in models.items():
+    scores = cross_val_score(model, X_scaled, y, cv=skf, scoring='roc_auc')
+    results[name] = scores
+    print(f"{name} AUC: {scores.mean():.4f} +/- {scores.std():.4f}")
+
+# Train the best model (choose based on AUC)
+best_model = max(results, key=lambda k: results[k].mean())
+final_model = models[best_model]
+final_model.fit(X_scaled, y)
+
+# 🔍 Step 5: SHAP Interpretation
+explainer = shap.Explainer(final_model, X_scaled)
+shap_values = explainer(X_scaled[:100])
+shap.summary_plot(shap_values, X, plot_type="bar")
+
+# 📢 Step 6: Business Recommendations
+# Use markdown in Jupyter to describe:
+# - Top features affecting default risk
+# - Actionable insights, e.g. flagging high-risk customers
+# - Executive summary of findings and model performance
